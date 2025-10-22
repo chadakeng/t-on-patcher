@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-python patch_raw_into_firmware.py \
-  --firmware fw_name.bin \
+python tamaed/patch_raw_into_firmware.py \
+  --firmware dumps/fw_name.bin \
   --offset 0x45C040 \
   --width 128 --height 128 --colors 16 \
-  --raw builds/img_45c040.raw \
+  --raw images/builds/img_45c040.raw \
   --out patched_fw.bin
 """
 import argparse, math

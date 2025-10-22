@@ -1,23 +1,30 @@
 <!doctype html>
+<html>
+
 <head>
-    <meta charset="utf-8">
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="main.js" async defer></script>
-    <link href="style.css" rel="stylesheet"/>
+    <meta charset="utf-8" />
     <title>tamaed</title>
+    <link href="style.css" rel="stylesheet" />
+    <!-- JSZip for zipping extracted PNGs -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <!-- Defer (not async) so DOM is parsed before main.js runs -->
+    <script src="main.js" defer></script>
 </head>
+
 <body>
     <div class="container">
         <div class="wrapper">
             <div class="menu stack-x">
                 <div class="stack-y">
                     <label for="firmware-file-input"><u>F</u>irmware</label>
-                    <input type="file" id="firmware-file-input" accesskey="f"/>
+                    <input type="file" id="firmware-file-input" accesskey="f" />
                 </div>
             </div>
+
             <div class="map">
                 <canvas id="map-canvas"></canvas>
             </div>
+
             <div class="filter stack-x">
                 <div class="filter-group stack-x">
                     <label for="entities-filter-type-input">Type</label>
@@ -34,30 +41,35 @@
                         <option value="4" selected>4 x 4</option>
                     </select>
                 </div>
+                <div class="stack-x" style="gap:8px; margin-left:auto">
+                    <button id="export-map-json" disabled>Export map JSON</button>
+                    <button id="export-map-csv" disabled>Export map CSV</button>
+                </div>
             </div>
+
             <div class="entities">
-                <ul id="entities-list" class="entities-list">
-                </ul>
+                <ul id="entities-list" class="entities-list"></ul>
+
                 <div class="entity-preview">
                     <canvas id="entity-preview-canvas"></canvas>
-                    <div class="entity-actions">
-                        <button id="export-raw">Export RAW</button>
-                        <button id="export-png">Export PNG</button>
+                    <div class="entity-actions" style="margin-top:8px; gap:8px">
+                        <button id="export-raw" disabled>Export RAW</button>
+                        <button id="export-png" disabled>Export PNG</button>
                     </div>
-                    <div class="stack-y" style="margin-top:8px">
+
+                    <div class="stack-y" style="margin-top:12px">
                         <label for="offsets-input">Offsets to extract (hex or decimal, one per line)</label>
                         <textarea id="offsets-input" rows="4" style="width:100%"></textarea>
-                        <button id="extract-listed">Extract listed as PNGs</button>
+                        <button id="extract-listed">Extract listed as PNGs (ZIP)</button>
                     </div>
                 </div>
+
                 <code class="hex-area">
-                    <pre id="hex-area-offsets" class="hex-area-offsets">
-                    </pre>
-                    <pre id="hex-area-hextets" class="hex-area-hextets">
-                    </pre>
-                    <pre id="hex-area-chars" class="hex-area-chars">
-                    </pre>
-                </code>
+            <pre id="hex-area-offsets" class="hex-area-offsets"></pre>
+            <pre id="hex-area-hextets" class="hex-area-hextets"></pre>
+            <pre id="hex-area-chars" class="hex-area-chars"></pre>
+          </code>
+
                 <div class="hex-controls">
                     <button id="hex-page-up-button" disabled>^^</button>
                     <button id="hex-row-up-button" disabled>^</button>
@@ -65,14 +77,16 @@
                     <button id="hex-page-down-button" disabled>VV</button>
                     <div class="stack-y">
                         <label for="hex-offset-input">Offset</label>
-                        <input type="number" id="hex-offset-input" value="0" disabled/>
+                        <input type="number" id="hex-offset-input" value="0" disabled />
                     </div>
                     <div class="stack-y">
                         <label for="hex-page-size-input">Page size</label>
-                        <input type="number" id="hex-page-size-input" value="512" disabled/>
+                        <input type="number" id="hex-page-size-input" value="512" disabled />
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </body>
+
+</html>

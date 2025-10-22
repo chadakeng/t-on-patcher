@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-python png_to_tama_raw.py \
+python tamaed/png_to_tama_raw.py \
   --firmware fw_name.bin \
   --offset 0x45C040 \
   --width 128 --height 128 --colors 16 \
-  --png edited/img_45c040.png \
-  --out builds/img_45c040.raw
+  --png images/edited/img_45c040.png \
+  --out images/raw-builds/img_45c040.raw
 """
 
 import argparse, sys, struct, math
