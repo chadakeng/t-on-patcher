@@ -1,6 +1,7 @@
 <!doctype html>
 <head>
     <meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="main.js" async defer></script>
     <link href="style.css" rel="stylesheet"/>
     <title>tamaed</title>
@@ -39,6 +40,15 @@
                 </ul>
                 <div class="entity-preview">
                     <canvas id="entity-preview-canvas"></canvas>
+                    <div class="entity-actions">
+                        <button id="export-raw">Export RAW</button>
+                        <button id="export-png">Export PNG</button>
+                    </div>
+                    <div class="stack-y" style="margin-top:8px">
+                        <label for="offsets-input">Offsets to extract (hex or decimal, one per line)</label>
+                        <textarea id="offsets-input" rows="4" style="width:100%"></textarea>
+                        <button id="extract-listed">Extract listed as PNGs</button>
+                    </div>
                 </div>
                 <code class="hex-area">
                     <pre id="hex-area-offsets" class="hex-area-offsets">
