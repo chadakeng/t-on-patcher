@@ -7,6 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="main.js" defer></script>
 </head>
+
 <body>
   <div class="container">
     <div class="wrapper">
@@ -46,9 +47,8 @@
         </div>
       </div>
 
-      <!-- NEW: Actions row (uses the gap under the graph) -->
+      <!-- Actions -->
       <div class="actions">
-        <!-- Single patch -->
         <section class="action-card">
           <h3>Single patch</h3>
           <div class="stack-x">
@@ -58,9 +58,8 @@
           <small>Pick an edited PNG (auto-quantized) or RAW to replace the selected image.</small>
         </section>
 
-        <!-- Batch mode -->
         <section class="action-card">
-          <h3>Batch mode</h3>
+          <h3>Batch Patch</h3>
           <div class="stack-y" style="gap:6px">
             <div class="stack-x">
               <input type="file" id="batch-csv-input" accept=".csv" />
@@ -79,10 +78,17 @@
 
       <!-- Main 3-column grid -->
       <div class="entities">
-        <!-- 1) List -->
-        <ul id="entities-list" class="entities-list"></ul>
+        <!-- LEFT: list + log -->
+        <div class="left-column">
+          <ul id="entities-list" class="entities-list"></ul>
 
-        <!-- 2) Preview (kept compact) -->
+          <section class="card log-card">
+            <h3>Patch Log</h3>
+            <div id="patch-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+          </section>
+        </div>
+
+        <!-- MIDDLE: preview -->
         <div class="tools">
           <section class="card">
             <h3>Preview</h3>
@@ -100,7 +106,7 @@
           </section>
         </div>
 
-        <!-- 3) Hex area + controls (stacked) -->
+        <!-- RIGHT: hex -->
         <div class="hex-column">
           <code class="hex-area">
             <pre id="hex-area-offsets" class="hex-area-offsets"></pre>

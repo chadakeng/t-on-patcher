@@ -11,6 +11,21 @@
     emit(event, ...args) { (this.events.get(event) || []).forEach(fn => fn(...args)); }
   }
 
+  const logBox = document.getElementById("patch-log");
+
+  function logMessage(msg, type = "info") {
+    if (!logBox) { console[type === "error" ? "error" : "log"](msg); return; }
+    const div = document.createElement("div");
+    div.textContent = msg;
+    if (type === "error") div.style.color = "#f55";
+    else if (type === "success") div.style.color = "#6f6";
+    logBox.appendChild(div);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function clearLog() {
+    if (logBox) logBox.innerHTML = "";
+  }
   // ============ helpers ============
   function fixDPI(canvas) {
     const dpi = window.devicePixelRatio || 1;
@@ -78,9 +93,9 @@
         const hi = bytes[i];
         const lo = bytes[i + 1];
         const color16 = (hi << 8) | lo;
-        const blue  = Math.round((((color16 & 0xf800) >> 11) / 31) * 255);
+        const blue = Math.round((((color16 & 0xf800) >> 11) / 31) * 255);
         const green = Math.round((((color16 & 0x07e0) >> 5) / 63) * 255);
-        const red   = Math.round(((color16 & 0x001f) / 31) * 255);
+        const red = Math.round(((color16 & 0x001f) / 31) * 255);
         palette.push([red, green, blue, 255]);
       }
       return palette;
@@ -96,7 +111,7 @@
           const b = bytes[i];
           const idx = i * 2;
           pixels.set(palette[b & 0x0f], idx * 4);      // low nibble
-          pixels.set(palette[b >> 4],    idx * 4 + 4); // high nibble
+          pixels.set(palette[b >> 4], idx * 4 + 4); // high nibble
         }
       } else {
         for (let i = 0; i < bytes.length; i++) {
@@ -106,36 +121,36 @@
       return pixels;
     }
 
-static scanForImage(bytes, offset) {
-  const width  = bytes[offset + 0];
-  const height = bytes[offset + 1];
-  const colors = bytes[offset + 2]; // palette entries (1..255)
+    static scanForImage(bytes, offset) {
+      const width = bytes[offset + 0];
+      const height = bytes[offset + 1];
+      const colors = bytes[offset + 2]; // palette entries (1..255)
 
-  // header magic: [0,1,255]
-  const okHeader =
-    bytes.length - offset > 10 &&
-    width  > 0 && width  <= 255 &&
-    height > 0 && height <= 255 &&
-    colors > 0 &&
-    bytes[offset + 3] === 0 &&
-    bytes[offset + 4] === 1 &&
-    bytes[offset + 5] === 255;
+      // header magic: [0,1,255]
+      const okHeader =
+        bytes.length - offset > 10 &&
+        width > 0 && width <= 255 &&
+        height > 0 && height <= 255 &&
+        colors > 0 &&
+        bytes[offset + 3] === 0 &&
+        bytes[offset + 4] === 1 &&
+        bytes[offset + 5] === 255;
 
-  if (!okHeader) return null;
+      if (!okHeader) return null;
 
-  // bytes after header: colors*2 palette words + pixel data
-  const headerSize = 6 + colors * 2;
-  const pixels = width * height;
-  const pixelsPerByte = colors > 16 ? 1 : 2; // 8bpp vs 4bpp
-  const imageBytes = Math.ceil(pixels / pixelsPerByte);
-  const totalSize = headerSize + imageBytes;
+      // bytes after header: colors*2 palette words + pixel data
+      const headerSize = 6 + colors * 2;
+      const pixels = width * height;
+      const pixelsPerByte = colors > 16 ? 1 : 2; // 8bpp vs 4bpp
+      const imageBytes = Math.ceil(pixels / pixelsPerByte);
+      const totalSize = headerSize + imageBytes;
 
-  // make sure the slice fits
-  if (offset + totalSize > bytes.length) return null;
+      // make sure the slice fits
+      if (offset + totalSize > bytes.length) return null;
 
-  try { return new TOImage(offset, bytes.subarray(offset, offset + totalSize)); }
-  catch { return null; }
-}
+      try { return new TOImage(offset, bytes.subarray(offset, offset + totalSize)); }
+      catch { return null; }
+    }
 
     drawTo(canvas, scale = 1) {
       const width = this.width * scale;
@@ -662,6 +677,20 @@ static scanForImage(bytes, offset) {
       URL.revokeObjectURL(a.href);
     }
 
+    const logBox = document.getElementById("patch-log");
+
+    function logMessage(msg, type = "info") {
+      const div = document.createElement("div");
+      div.textContent = msg;
+      if (type === "error") div.style.color = "#f55";
+      else if (type === "success") div.style.color = "#6f6";
+      logBox.appendChild(div);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function clearLog() {
+      if (logBox) logBox.innerHTML = "";
+    }
     // ====== Wire up new controls ======
     const singleFileInput = document.getElementById("single-edit-file");
     const btnPatchSelected = document.getElementById("btn-patch-selected");
@@ -733,12 +762,12 @@ static scanForImage(bytes, offset) {
       if (!offsets.length) { alert("No offsets found in first column."); return; }
 
       const zip = new JSZip();
-      const csvRows = [["offset_hex","offset_dec","width","height","colors","magic_ok","header_size","data_start_hex","data_len","block_size"]];
+      const csvRows = [["offset_hex", "offset_dec", "width", "height", "colors", "magic_ok", "header_size", "data_start_hex", "data_len", "block_size"]];
       const cvs = document.createElement("canvas");
 
       for (const off of offsets) {
         const info = headerInfo(app.firmware, off);
-        csvRows.push([hex(off), String(off), info.w, info.h, info.colors, info.ok ? "true":"false", info.headerSize, hex(info.dataStart), info.dataLen, info.headerSize + info.dataLen]);
+        csvRows.push([hex(off), String(off), info.w, info.h, info.colors, info.ok ? "true" : "false", info.headerSize, hex(info.dataStart), info.dataLen, info.headerSize + info.dataLen]);
 
         const ent = app.map.find(e => e.type === "image" && e.offset === off);
         if (ent) {
@@ -760,9 +789,14 @@ static scanForImage(bytes, offset) {
     });
 
     btnBatchPatch.addEventListener("click", async () => {
-      if (!folderInput.files || folderInput.files.length === 0) { alert("Pick the edited folder."); return; }
+      clearLog();
+      if (!folderInput.files || folderInput.files.length === 0) {
+        alert("Pick the edited folder.");
+        return;
+      }
       const fwBytes = new Uint8Array(app.firmware);
       const byName = new Map();
+
       for (const f of folderInput.files) {
         const name = f.name.toLowerCase();
         if (!name.endsWith(".png") && !name.endsWith(".raw")) continue;
@@ -770,13 +804,17 @@ static scanForImage(bytes, offset) {
         byName.set(base, f);
       }
 
-      let patchedCount = 0, missing = [];
+      let patchedCount = 0;
+      let missing = [];
+
       for (const ent of app.map) {
         if (ent.type !== "image") continue;
         const offHex = ent.offset.toString(16).toLowerCase();
         const candidates = [`0x${offHex}`, `${offHex}`, `${ent.offset}`];
         let f = null;
-        for (const k of candidates) { if (byName.has(k)) { f = byName.get(k); break; } }
+        for (const k of candidates) {
+          if (byName.has(k)) { f = byName.get(k); break; }
+        }
         if (!f) continue;
 
         const info = headerInfo(app.firmware, ent.offset);
@@ -790,19 +828,16 @@ static scanForImage(bytes, offset) {
           }
           patchRawIntoFirmware(fwBytes, ent.offset, raw, info);
           patchedCount++;
+          logMessage(`✔ Patched ${hex(ent.offset)}`, "success");
         } catch (e) {
-          console.warn("Failed patch at", hex(ent.offset), e);
-          missing.push(hex(ent.offset) + " (" + e.message + ")");
+          logMessage(`✖ ${hex(ent.offset)} error: ${e.message}`, "error");
+          missing.push(`${hex(ent.offset)} (${e.message})`);
         }
       }
 
-      if (patchedCount === 0) {
-        alert("No matching edited files found for any image offsets.");
-        return;
-      }
-      if (missing.length) {
-        console.warn("Some patches failed:\n" + missing.join("\n"));
-      }
+      logMessage(`\nPatched ${patchedCount} images.`);
+      if (missing.length) logMessage(`Failed patches:\n${missing.join("\n")}`, "error");
+
       downloadPatchedFirmware("firmware.bin", fwBytes);
     });
   }
