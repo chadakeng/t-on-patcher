@@ -1,5 +1,6 @@
 <!doctype html>
 <html>
+
 <head>
   <meta charset="utf-8" />
   <title>tamaed</title>
@@ -7,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="main.js" defer></script>
 </head>
+
 <body>
   <div class="container">
     <div class="wrapper">
@@ -80,7 +82,15 @@
       <!-- Main 3-column grid -->
       <div class="entities">
         <!-- 1) List -->
-        <ul id="entities-list" class="entities-list"></ul>
+        <section class="card">
+          <ul id="entities-list" class="entities-list"></ul>
+
+          <h3>Console</h3>
+          <div id="patch-log" class="log-box"></div>
+          <div class="stack-x" style="margin-top:8px; gap:8px">
+            <button id="clear-log">Clear</button>
+          </div>
+        </section>
 
         <!-- 2) Preview (kept compact) -->
         <div class="tools">
@@ -128,4 +138,5 @@
     </div> <!-- /wrapper -->
   </div> <!-- /container -->
 </body>
+
 </html>

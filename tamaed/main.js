@@ -313,9 +313,9 @@
     const offsetsInput = $("#offsets-input");
     const extractListedBtn = $("#extract-listed");
 
-    // NEW: staged download button
     const btnDownloadPatched = $("#btn-download-patched");
-
+    const clearLogBtn = document.getElementById("clear-log");
+    clearLogBtn?.addEventListener("click", () => clearLog());
     const hexControls = [
       hexPageSizeInput, hexOffsetInput, hexPageUpButton, hexRowUpButton,
       hexRowDownButton, hexPageDownButton
@@ -341,7 +341,6 @@
     }
 
     // ====== STAGED FIRMWARE STATE ======
-    let previewItem = null;
     let activeFileName = "firmware.bin";
     let stagedFw = null;             // Uint8Array that we mutate with patches
     let dirty = false;
@@ -359,19 +358,30 @@
       return stagedFw || app.firmware;
     }
 
-    function setPreview(dataItem) {
-      previewItem = dataItem;
-      if (!dataItem) return;
-      if (dataItem.type === TOImage.typeName) {
-        dataItem.drawTo(entityPreviewCanvas, getEntityPreviewScale());
-        exportRawBtn?.removeAttribute("disabled");
-        exportPngBtn?.removeAttribute("disabled");
-      }
+    // ---- live preview tracking (by offset only) ----
+    let previewOffset = null;
+
+    function imageAtOffset(offset) {
+      const bytes = activeBytes();
+      return TOImage.scanForImage(bytes, offset);
     }
 
-    entityPreviewScaleInput?.addEventListener("change", () => {
-      if (previewItem !== null) setPreview(previewItem);
-    });
+    function redrawPreview() {
+      if (previewOffset == null) return;
+      const img = imageAtOffset(previewOffset);
+      if (!img) return;
+      img.drawTo(entityPreviewCanvas, getEntityPreviewScale());
+      exportRawBtn?.removeAttribute("disabled");
+      exportPngBtn?.removeAttribute("disabled");
+    }
+
+    function setPreview(dataItem) {
+      if (!dataItem) return;
+      previewOffset = dataItem.offset;
+      redrawPreview();
+    }
+
+    entityPreviewScaleInput?.addEventListener("change", redrawPreview);
 
     function getHexViewOffset() { return hexOffsetInput.valueAsNumber; }
 
@@ -454,32 +464,33 @@
       markSelected(li);
 
       navigateHexViewTo(dataItem.offset);
-      setPreview(dataItem);
+      setPreview(dataItem);       // always from live bytes
     });
 
-    // export selected RAW/PNG
+    // export selected RAW
     exportRawBtn?.addEventListener("click", () => {
-      if (!previewItem) return;
+      if (previewOffset == null) return;
+      const img = imageAtOffset(previewOffset);
+      if (!img) return;
       const bytes = activeBytes();
-      const slice = bytes.subarray(previewItem.offset, previewItem.offset + previewItem.size);
+      const slice = bytes.subarray(img.offset, img.offset + img.size);
       downloadBlob(
-        `image_${previewItem.offset.toString(16)}_${previewItem.size}.raw`,
+        `image_${img.offset.toString(16)}_${img.size}.raw`,
         new Blob([slice], { type: "application/octet-stream" })
       );
     });
 
-    // Export PNG
+    // export selected PNG (exact 1x firmware size)
     exportPngBtn?.addEventListener("click", () => {
-      if (!previewItem || previewItem.type !== TOImage.typeName) return;
+      if (previewOffset == null) return;
+      const img = imageAtOffset(previewOffset);
+      if (!img) return;
 
       const off = document.createElement("canvas");
-      const srcBytes = activeBytes().subarray(previewItem.offset, previewItem.offset + previewItem.size);
-      const img1x = new TOImage(previewItem.offset, srcBytes);
-
-      img1x.drawTo(off, 1);
+      img.drawTo(off, 1);
       off.toBlob((blob) => {
         if (blob) downloadBlob(
-          `img_${previewItem.offset.toString(16)}_${img1x.width}x${img1x.height}.png`,
+          `img_${img.offset.toString(16)}_${img.width}x${img.height}.png`,
           blob
         );
       }, "image/png");
@@ -577,7 +588,7 @@
       downloadBlob("tama_image_map.csv", new Blob([csv], { type: "text/csv;charset=utf-8" }));
     });
 
-    // === ZIP selected offsets ===
+    // === ZIP selected offsets (draw from LIVE bytes) ===
     extractListedBtn?.addEventListener("click", async () => {
       if (!app || !app.map) return;
 
@@ -599,7 +610,9 @@
         if (ent.type !== "image" || !want.has(ent.offset)) continue;
         matched++;
         tasks.push(new Promise((resolve) => {
-          ent.drawTo(cvs, 1);
+          const live = imageAtOffset(ent.offset);
+          if (!live) { resolve(); return; }
+          live.drawTo(cvs, 1);
           cvs.toBlob((blob) => {
             if (blob) zip.file(`img_${ent.offset.toString(16)}.png`, blob);
             resolve();
@@ -696,6 +709,7 @@
         } catch (e) { reject(e); }
       });
     }
+
     function patchRawIntoFirmware(fwBytes, off, rawBytes, info) {
       const { dataStart, dataLen } = info;
       if (rawBytes.length !== dataLen) {
@@ -703,9 +717,12 @@
       }
       fwBytes.set(rawBytes, dataStart);
     }
-    function blobFromBytes(bytes) { return new Blob([bytes], { type: "application/octet-stream" }); }
 
-    // ====== Wire up new controls ======
+    function blobFromBytes(bytes) {
+      return new Blob([bytes], { type: "application/octet-stream" });
+    }
+
+    // ====== Wire up controls ======
     const singleFileInput = document.getElementById("single-edit-file");
     const btnPatchSelected = document.getElementById("btn-patch-selected");
     const csvInput = document.getElementById("batch-csv-input");
@@ -713,28 +730,28 @@
     const folderInput = document.getElementById("batch-folder-input");
     const btnBatchPatch = document.getElementById("btn-batch-patch");
 
-    btnPatchSelected.setAttribute("disabled", "true");
-    btnBatchExport.setAttribute("disabled", "true");
-    btnBatchPatch.setAttribute("disabled", "true");
+    btnPatchSelected?.setAttribute("disabled", "true");
+    btnBatchExport?.setAttribute("disabled", "true");
+    btnBatchPatch?.setAttribute("disabled", "true");
 
     app.on(Application.events.mapReady, () => {
-      btnBatchExport.removeAttribute("disabled");
+      btnBatchExport?.removeAttribute("disabled");
     });
 
-    entitiesList.addEventListener("click", (ev) => {
+    entitiesList?.addEventListener("click", (ev) => {
       const idx = nearestDataOffsetAttributeValue(ev.target);
       const ent = app.map[idx];
       if (ent && ent.type === "image") {
-        btnPatchSelected.removeAttribute("disabled");
+        btnPatchSelected?.removeAttribute("disabled");
       }
     });
 
     // ====== Single patch (staged, NO auto-download) ======
-    btnPatchSelected.addEventListener("click", async () => {
+    btnPatchSelected?.addEventListener("click", async () => {
       const li = document.querySelector("#entities-list .entity.selected") || null;
       const idx = (li ? parseInt(li.getAttribute("data-id"), 10) : null);
-      const ent = (idx !== null ? app.map[idx] : null) || (window.toapp && window.toapp.map && previewItem) || null;
-      const selected = ent || previewItem;
+      const ent = (idx !== null ? app.map[idx] : null);
+      const selected = ent;
       if (!selected || selected.type !== "image") {
         logMessage("Pick an image from the list first.", "error");
         return;
@@ -768,14 +785,14 @@
         logMessage(`✔ Staged patch at ${hex(selected.offset)} (no download yet).`, "success");
         // refresh preview/hex if we're looking at this region
         navigateHexViewTo(selected.offset);
-        setPreview(new TOImage(selected.offset, stagedFw.subarray(selected.offset, selected.offset + selected.size)));
+        setPreview({ offset: selected.offset }); // <- live redraw
       } catch (e) {
         logMessage(`✖ Patch failed at ${hex(selected.offset)}: ${e.message}`, "error");
       }
     });
 
-    // ====== Batch export (unchanged behavior) ======
-    btnBatchExport.addEventListener("click", async () => {
+    // ====== Batch export ======
+    btnBatchExport?.addEventListener("click", async () => {
       if (!csvInput.files || csvInput.files.length === 0) {
         logMessage("Choose a CSV first.", "error");
         return;
@@ -806,23 +823,24 @@
 
         const ent = app.map.find(e => e.type === "image" && e.offset === off);
         if (ent) {
-          // draw from staged or original image
-          const tmp = new TOImage(ent.offset, activeBytes().subarray(ent.offset, ent.offset + ent.size));
-          tmp.drawTo(cvs, 1);
-          const blob = await new Promise(res => cvs.toBlob(res, "image/png"));
-          if (blob) zip.file(`${hex(off)}.png`, blob);
+          const live = imageAtOffset(ent.offset);
+          if (live) {
+            live.drawTo(cvs, 1);
+            const blob = await new Promise(res => cvs.toBlob(res, "image/png"));
+            if (blob) zip.file(`${hex(off)}.png`, blob);
+          }
         }
       }
 
       zip.file("batch.csv", new Blob([csvRows.map(r => r.join(",")).join("\n")], { type: "text/csv;charset=utf-8" }));
       const zipBlob = await zip.generateAsync({ type: "blob" });
       downloadBlob("images_and_batch_csv.zip", zipBlob);
-      btnBatchPatch.removeAttribute("disabled");
+      btnBatchPatch?.removeAttribute("disabled");
       logMessage("Batch export completed.");
     });
 
     // ====== Batch patch (staged, NO auto-download) ======
-    btnBatchPatch.addEventListener("click", async () => {
+    btnBatchPatch?.addEventListener("click", async () => {
       clearLog();
       if (!folderInput.files || folderInput.files.length === 0) {
         logMessage("Pick the edited folder.", "error");
@@ -875,7 +893,6 @@
       if (patchedCount > 0) setDirty();
       logMessage(`Staged ${patchedCount} images.`);
       if (missing.length) logMessage(`Failed patches:\n${missing.join("\n")}`, "error");
-      // no auto-download here anymore
     });
 
     // ====== Download staged firmware ======
