@@ -1,92 +1,131 @@
 <!doctype html>
 <html>
-
 <head>
-    <meta charset="utf-8" />
-    <title>tamaed</title>
-    <link href="style.css" rel="stylesheet" />
-    <!-- JSZip for zipping extracted PNGs -->
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <!-- Defer (not async) so DOM is parsed before main.js runs -->
-    <script src="main.js" defer></script>
+  <meta charset="utf-8" />
+  <title>tamaed</title>
+  <link href="style.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="main.js" defer></script>
 </head>
-
 <body>
-    <div class="container">
-        <div class="wrapper">
-            <div class="menu stack-x">
-                <div class="stack-y">
-                    <label for="firmware-file-input"><u>F</u>irmware</label>
-                    <input type="file" id="firmware-file-input" accesskey="f" />
-                </div>
+  <div class="container">
+    <div class="wrapper">
+      <!-- Top bar -->
+      <div class="menu stack-x">
+        <div class="stack-y">
+          <label for="firmware-file-input"><u>F</u>irmware</label>
+          <input type="file" id="firmware-file-input" accesskey="f" />
+        </div>
+      </div>
+
+      <!-- Memory map -->
+      <div class="map">
+        <canvas id="map-canvas"></canvas>
+      </div>
+
+      <!-- Filters -->
+      <div class="filter stack-x">
+        <div class="filter-group stack-x">
+          <label for="entities-filter-type-input">Type</label>
+          <select id="entities-filter-type-input">
+            <option value="all" selected>all</option>
+            <option value="image">image</option>
+          </select>
+        </div>
+        <div class="filter-group stack-x">
+          <label for="entity-preview-scale-input">Scale</label>
+          <select id="entity-preview-scale-input">
+            <option value="1">1 x 1</option>
+            <option value="2">2 x 2</option>
+            <option value="4" selected>4 x 4</option>
+          </select>
+        </div>
+        <div class="stack-x" style="gap:8px; margin-left:auto">
+          <button id="export-map-json" disabled>Export map JSON</button>
+          <button id="export-map-csv" disabled>Export map CSV</button>
+        </div>
+      </div>
+
+      <!-- NEW: Actions row (uses the gap under the graph) -->
+      <div class="actions">
+        <!-- Single patch -->
+        <section class="action-card">
+          <h3>Single patch</h3>
+          <div class="stack-x">
+            <input type="file" id="single-edit-file" accept=".png,.raw" />
+            <button id="btn-patch-selected" disabled>Patch Selected</button>
+          </div>
+          <small>Pick an edited PNG (auto-quantized) or RAW to replace the selected image.</small>
+        </section>
+
+        <!-- Batch mode -->
+        <section class="action-card">
+          <h3>Batch mode</h3>
+          <div class="stack-y" style="gap:6px">
+            <div class="stack-x">
+              <input type="file" id="batch-csv-input" accept=".csv" />
+              <button id="btn-batch-export" disabled>Export ZIP &amp; CSV</button>
+            </div>
+            <small>Exports PNGs for all offsets in the CSV and an augmented CSV with sizes, palette, etc.</small>
+            <div class="stack-x">
+              <input type="file" id="batch-folder-input" webkitdirectory directory />
+              <button id="btn-batch-patch" disabled>Patch All From Folder</button>
+            </div>
+            <small>Filenames: <code>0x45c040.png</code>, <code>45c040.png</code>,
+              <code>img_45c040.png</code>, <code>0x45c040.raw</code>.</small>
+          </div>
+        </section>
+      </div>
+
+      <!-- Main 3-column grid -->
+      <div class="entities">
+        <!-- 1) List -->
+        <ul id="entities-list" class="entities-list"></ul>
+
+        <!-- 2) Preview (kept compact) -->
+        <div class="tools">
+          <section class="card">
+            <h3>Preview</h3>
+            <canvas id="entity-preview-canvas"></canvas>
+            <div class="entity-actions">
+              <button id="export-raw" disabled>Export RAW</button>
+              <button id="export-png" disabled>Export PNG</button>
             </div>
 
-            <div class="map">
-                <canvas id="map-canvas"></canvas>
+            <div class="stack-y" style="margin-top:12px; gap:8px">
+              <label for="offsets-input">Offsets to extract (hex or decimal, one per line)</label>
+              <textarea id="offsets-input" rows="4" style="width:100%"></textarea>
+              <button id="extract-listed">Extract listed as PNGs (ZIP)</button>
             </div>
+          </section>
+        </div>
 
-            <div class="filter stack-x">
-                <div class="filter-group stack-x">
-                    <label for="entities-filter-type-input">Type</label>
-                    <select id="entities-filter-type-input">
-                        <option value="all" selected>all</option>
-                        <option value="image">image</option>
-                    </select>
-                </div>
-                <div class="filter-group stack-x">
-                    <label for="entity-preview-scale-input">Scale</label>
-                    <select id="entity-preview-scale-input">
-                        <option value="1">1 x 1</option>
-                        <option value="2">2 x 2</option>
-                        <option value="4" selected>4 x 4</option>
-                    </select>
-                </div>
-                <div class="stack-x" style="gap:8px; margin-left:auto">
-                    <button id="export-map-json" disabled>Export map JSON</button>
-                    <button id="export-map-csv" disabled>Export map CSV</button>
-                </div>
-            </div>
-
-            <div class="entities">
-                <ul id="entities-list" class="entities-list"></ul>
-
-                <div class="entity-preview">
-                    <canvas id="entity-preview-canvas"></canvas>
-                    <div class="entity-actions" style="margin-top:8px; gap:8px">
-                        <button id="export-raw" disabled>Export RAW</button>
-                        <button id="export-png" disabled>Export PNG</button>
-                    </div>
-
-                    <div class="stack-y" style="margin-top:12px">
-                        <label for="offsets-input">Offsets to extract (hex or decimal, one per line)</label>
-                        <textarea id="offsets-input" rows="4" style="width:100%"></textarea>
-                        <button id="extract-listed">Extract listed as PNGs (ZIP)</button>
-                    </div>
-                </div>
-
-                <code class="hex-area">
+        <!-- 3) Hex area + controls (stacked) -->
+        <div class="hex-column">
+          <code class="hex-area">
             <pre id="hex-area-offsets" class="hex-area-offsets"></pre>
             <pre id="hex-area-hextets" class="hex-area-hextets"></pre>
             <pre id="hex-area-chars" class="hex-area-chars"></pre>
           </code>
 
-                <div class="hex-controls">
-                    <button id="hex-page-up-button" disabled>^^</button>
-                    <button id="hex-row-up-button" disabled>^</button>
-                    <button id="hex-row-down-button" disabled>V</button>
-                    <button id="hex-page-down-button" disabled>VV</button>
-                    <div class="stack-y">
-                        <label for="hex-offset-input">Offset</label>
-                        <input type="number" id="hex-offset-input" value="0" disabled />
-                    </div>
-                    <div class="stack-y">
-                        <label for="hex-page-size-input">Page size</label>
-                        <input type="number" id="hex-page-size-input" value="512" disabled />
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</body>
+          <div class="hex-controls">
+            <button id="hex-page-up-button" disabled>^^</button>
+            <button id="hex-row-up-button" disabled>^</button>
+            <button id="hex-row-down-button" disabled>V</button>
+            <button id="hex-page-down-button" disabled>VV</button>
 
+            <div class="stack-y">
+              <label for="hex-offset-input">Offset</label>
+              <input type="number" id="hex-offset-input" value="0" disabled />
+            </div>
+            <div class="stack-y">
+              <label for="hex-page-size-input">Page size</label>
+              <input type="number" id="hex-page-size-input" value="512" disabled />
+            </div>
+          </div>
+        </div>
+      </div> <!-- /entities -->
+    </div> <!-- /wrapper -->
+  </div> <!-- /container -->
+</body>
 </html>
