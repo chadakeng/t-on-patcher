@@ -11,21 +11,24 @@
     emit(event, ...args) { (this.events.get(event) || []).forEach(fn => fn(...args)); }
   }
 
-  const logBox = document.getElementById("patch-log");
-
+  // unified log helpers
+  function _logBox() { return document.getElementById("patch-log"); }
   function logMessage(msg, type = "info") {
-    if (!logBox) { console[type === "error" ? "error" : "log"](msg); return; }
-    const div = document.createElement("div");
-    div.textContent = msg;
-    if (type === "error") div.style.color = "#f55";
-    else if (type === "success") div.style.color = "#6f6";
-    logBox.appendChild(div);
-    logBox.scrollTop = logBox.scrollHeight;
+    const box = _logBox();
+    const isError = type === "error";
+    const isSuccess = type === "success";
+    if (box) {
+      const div = document.createElement("div");
+      div.textContent = msg;
+      if (isError) div.style.color = "#f55";
+      else if (isSuccess) div.style.color = "#6f6";
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+    (isError ? console.error : console.log)(msg);
   }
+  function clearLog() { const b = _logBox(); if (b) b.innerHTML = ""; }
 
-  function clearLog() {
-    if (logBox) logBox.innerHTML = "";
-  }
   // ============ helpers ============
   function fixDPI(canvas) {
     const dpi = window.devicePixelRatio || 1;
@@ -111,7 +114,7 @@
           const b = bytes[i];
           const idx = i * 2;
           pixels.set(palette[b & 0x0f], idx * 4);      // low nibble
-          pixels.set(palette[b >> 4], idx * 4 + 4); // high nibble
+          pixels.set(palette[b >> 4], idx * 4 + 4);    // high nibble
         }
       } else {
         for (let i = 0; i < bytes.length; i++) {
@@ -138,14 +141,13 @@
 
       if (!okHeader) return null;
 
-      // bytes after header: colors*2 palette words + pixel data
+      // after header: colors*2 palette words + pixel data
       const headerSize = 6 + colors * 2;
       const pixels = width * height;
       const pixelsPerByte = colors > 16 ? 1 : 2; // 8bpp vs 4bpp
       const imageBytes = Math.ceil(pixels / pixelsPerByte);
       const totalSize = headerSize + imageBytes;
 
-      // make sure the slice fits
       if (offset + totalSize > bytes.length) return null;
 
       try { return new TOImage(offset, bytes.subarray(offset, offset + totalSize)); }
@@ -180,7 +182,6 @@
           }
         }
 
-        // vertical scale copy
         const row = img.data.slice(rowOffset, rowOffset + widthPixelBytes);
         for (let ys = 1; ys < scale; ys++) {
           img.data.set(row, rowOffset + ys * widthPixelBytes);
@@ -194,7 +195,7 @@
   class Application extends EventEmitter {
     constructor(scan = () => null) {
       super();
-      this.firmware = null;
+      this.firmware = null;         // original bytes
       this.map = null;
       this.scan = scan;
     }
@@ -202,7 +203,7 @@
     async changeFirmware(file) {
       this.firmware = new Uint8Array(await file.arrayBuffer());
       this.map = null;
-      this.emit(Application.events.firmwareReady);
+      this.emit(Application.events.firmwareReady, { fileName: file.name || "firmware.bin" });
     }
     async buildMap() {
       if (this.firmware === null) return;
@@ -312,6 +313,9 @@
     const offsetsInput = $("#offsets-input");
     const extractListedBtn = $("#extract-listed");
 
+    // NEW: staged download button
+    const btnDownloadPatched = $("#btn-download-patched");
+
     const hexControls = [
       hexPageSizeInput, hexOffsetInput, hexPageUpButton, hexRowUpButton,
       hexRowDownButton, hexPageDownButton
@@ -336,8 +340,24 @@
       return parseInt(entityPreviewScaleInput?.value || "1", 10) || 1;
     }
 
-    // state
+    // ====== STAGED FIRMWARE STATE ======
     let previewItem = null;
+    let activeFileName = "firmware.bin";
+    let stagedFw = null;             // Uint8Array that we mutate with patches
+    let dirty = false;
+
+    function setDirty() {
+      dirty = true;
+      btnDownloadPatched?.removeAttribute("disabled");
+    }
+    function clearDirty() {
+      dirty = false;
+      btnDownloadPatched?.setAttribute("disabled", "true");
+    }
+    function activeBytes() {
+      // Use staged view if available; else original
+      return stagedFw || app.firmware;
+    }
 
     function setPreview(dataItem) {
       previewItem = dataItem;
@@ -361,11 +381,12 @@
     }
 
     function navigateHexViewTo(rawOffset) {
-      if (!app.firmware) return;
+      const bytesArr = activeBytes();
+      if (!bytesArr) return;
       const pageSize = getHexViewPageSize();
-      const maxOffset = Math.max(0, app.firmware.length - pageSize);
+      const maxOffset = Math.max(0, bytesArr.length - pageSize);
       const offset = Math.min(maxOffset, Math.max(0, rawOffset));
-      const bytes = Array.from(app.firmware.slice(offset, offset + pageSize));
+      const bytes = Array.from(bytesArr.slice(offset, offset + pageSize));
 
       hexOffsetInput.value = offset;
 
@@ -394,12 +415,12 @@
         )
         .join("\n");
 
-      drawMapTo(mapCanvas, app.map, app.firmware.byteLength, offset, offset + pageSize);
+      drawMapTo(mapCanvas, app.map, bytesArr.byteLength, offset, offset + pageSize);
 
       // keep map visible for very large firmwares
       const mapCanvasEl = document.getElementById("map-canvas");
       if (mapCanvasEl && app.map) {
-        const scale = Math.max(1, app.firmware.byteLength / (1024 * 512));
+        const scale = Math.max(1, bytesArr.byteLength / (1024 * 512));
         mapCanvasEl.style.width = `${Math.min(scale * 100, 10000)}px`;
       }
     }
@@ -409,6 +430,7 @@
       "change",
       passFirstFileTo((file) => {
         console.log("[tamaed] firmware selected:", file?.name, file?.size, "bytes");
+        activeFileName = file?.name || "firmware.bin";
         app.changeFirmware(file);
       })
     );
@@ -427,7 +449,6 @@
       if (!Number.isFinite(idx) || idx < 0 || !app.map) return;
       const dataItem = app.map[idx];
 
-      // find the li we clicked (walk up to .entity)
       let li = event.target;
       while (li && !li.classList?.contains("entity")) li = li.parentElement;
       markSelected(li);
@@ -439,9 +460,11 @@
     // export selected RAW/PNG
     exportRawBtn?.addEventListener("click", () => {
       if (!previewItem) return;
+      const bytes = activeBytes();
+      const slice = bytes.subarray(previewItem.offset, previewItem.offset + previewItem.size);
       downloadBlob(
         `image_${previewItem.offset.toString(16)}_${previewItem.size}.raw`,
-        new Blob([previewItem.bytes], { type: "application/octet-stream" })
+        new Blob([slice], { type: "application/octet-stream" })
       );
     });
 
@@ -454,9 +477,13 @@
 
     // app events
     app.on(Application.events.firmwareReady, () => {
+      // reset staged view to a fresh copy of original
+      stagedFw = new Uint8Array(app.firmware);
+      clearDirty();
       entitiesList.textContent = "";
       hexControls.forEach((c) => c?.setAttribute("disabled", "true"));
       app.buildMap();
+      logMessage("Firmware loaded.");
     });
 
     app.on(Application.events.mapReady, () => {
@@ -487,7 +514,7 @@
       exportCsvBtn?.removeAttribute("disabled");
 
       // show initial hex/map
-      if (app.firmware) navigateHexViewTo(0);
+      if (activeBytes()) navigateHexViewTo(0);
     });
 
     // ---- map export helpers (metadata only) ----
@@ -572,7 +599,7 @@
 
       await Promise.all(tasks);
       if (matched === 0) {
-        alert("No matching offsets found.");
+        logMessage("No matching offsets found.", "error");
         return;
       }
       const zipBlob = await zip.generateAsync({ type: "blob" });
@@ -667,30 +694,7 @@
       fwBytes.set(rawBytes, dataStart);
     }
     function blobFromBytes(bytes) { return new Blob([bytes], { type: "application/octet-stream" }); }
-    function downloadPatchedFirmware(baseName, fwBytes) {
-      const out = new Uint8Array(fwBytes);
-      const blob = blobFromBytes(out);
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `patched_${baseName}`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
 
-    const logBox = document.getElementById("patch-log");
-
-    function logMessage(msg, type = "info") {
-      const div = document.createElement("div");
-      div.textContent = msg;
-      if (type === "error") div.style.color = "#f55";
-      else if (type === "success") div.style.color = "#6f6";
-      logBox.appendChild(div);
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-
-    function clearLog() {
-      if (logBox) logBox.innerHTML = "";
-    }
     // ====== Wire up new controls ======
     const singleFileInput = document.getElementById("single-edit-file");
     const btnPatchSelected = document.getElementById("btn-patch-selected");
@@ -715,39 +719,57 @@
       }
     });
 
+    // ====== Single patch (staged, NO auto-download) ======
     btnPatchSelected.addEventListener("click", async () => {
       const li = document.querySelector("#entities-list .entity.selected") || null;
       const idx = (li ? parseInt(li.getAttribute("data-id"), 10) : null);
       const ent = (idx !== null ? app.map[idx] : null) || (window.toapp && window.toapp.map && previewItem) || null;
       const selected = ent || previewItem;
-      if (!selected || selected.type !== "image") { alert("Pick an image from the list first."); return; }
-      if (!singleFileInput.files || singleFileInput.files.length === 0) { alert("Pick a PNG/RAW to patch."); return; }
+      if (!selected || selected.type !== "image") {
+        logMessage("Pick an image from the list first.", "error");
+        return;
+      }
+      if (!singleFileInput.files || singleFileInput.files.length === 0) {
+        logMessage("Pick a PNG/RAW to patch.", "error");
+        return;
+      }
+      if (!stagedFw) {
+        logMessage("No firmware loaded yet.", "error");
+        return;
+      }
 
       const f = singleFileInput.files[0];
-      const info = headerInfo(app.firmware, selected.offset);
-      if (!info.ok) { alert("Header magic check failed at this offset."); return; }
-
-      const fwBytes = new Uint8Array(app.firmware);
-      const baseName = "firmware.bin";
+      const info = headerInfo(activeBytes(), selected.offset);
+      if (!info.ok) {
+        logMessage("Header magic check failed at this offset.", "error");
+        return;
+      }
 
       try {
         let raw;
         if (f.name.toLowerCase().endsWith(".raw")) {
           raw = new Uint8Array(await f.arrayBuffer());
         } else {
-          const pal = firmwarePaletteAt(app.firmware, selected.offset, info.colors);
+          const pal = firmwarePaletteAt(activeBytes(), selected.offset, info.colors);
           raw = await pngToRawUsingPalette(f, info.w, info.h, info.colors, pal);
         }
-        patchRawIntoFirmware(fwBytes, selected.offset, raw, info);
-        downloadPatchedFirmware(baseName, fwBytes);
+        patchRawIntoFirmware(stagedFw, selected.offset, raw, info);
+        setDirty();
+        logMessage(`✔ Staged patch at ${hex(selected.offset)} (no download yet).`, "success");
+        // refresh preview/hex if we're looking at this region
+        navigateHexViewTo(selected.offset);
+        setPreview(new TOImage(selected.offset, stagedFw.subarray(selected.offset, selected.offset + selected.size)));
       } catch (e) {
-        console.error(e);
-        alert("Patch failed: " + e.message);
+        logMessage(`✖ Patch failed at ${hex(selected.offset)}: ${e.message}`, "error");
       }
     });
 
+    // ====== Batch export (unchanged behavior) ======
     btnBatchExport.addEventListener("click", async () => {
-      if (!csvInput.files || csvInput.files.length === 0) { alert("Choose a CSV first."); return; }
+      if (!csvInput.files || csvInput.files.length === 0) {
+        logMessage("Choose a CSV first.", "error");
+        return;
+      }
       const file = csvInput.files[0];
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter(s => s.trim().length > 0);
@@ -759,19 +781,24 @@
         const off = parseOff(cell);
         if (Number.isFinite(off)) offsets.push(off);
       }
-      if (!offsets.length) { alert("No offsets found in first column."); return; }
+      if (!offsets.length) {
+        logMessage("No offsets found in first column.", "error");
+        return;
+      }
 
       const zip = new JSZip();
       const csvRows = [["offset_hex", "offset_dec", "width", "height", "colors", "magic_ok", "header_size", "data_start_hex", "data_len", "block_size"]];
       const cvs = document.createElement("canvas");
 
       for (const off of offsets) {
-        const info = headerInfo(app.firmware, off);
+        const info = headerInfo(activeBytes(), off);
         csvRows.push([hex(off), String(off), info.w, info.h, info.colors, info.ok ? "true" : "false", info.headerSize, hex(info.dataStart), info.dataLen, info.headerSize + info.dataLen]);
 
         const ent = app.map.find(e => e.type === "image" && e.offset === off);
         if (ent) {
-          ent.drawTo(cvs, 1);
+          // draw from staged or original image
+          const tmp = new TOImage(ent.offset, activeBytes().subarray(ent.offset, ent.offset + ent.size));
+          tmp.drawTo(cvs, 1);
           const blob = await new Promise(res => cvs.toBlob(res, "image/png"));
           if (blob) zip.file(`${hex(off)}.png`, blob);
         }
@@ -779,22 +806,22 @@
 
       zip.file("batch.csv", new Blob([csvRows.map(r => r.join(",")).join("\n")], { type: "text/csv;charset=utf-8" }));
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(zipBlob);
-      a.download = "images_and_batch_csv.zip";
-      a.click();
-      URL.revokeObjectURL(a.href);
-
+      downloadBlob("images_and_batch_csv.zip", zipBlob);
       btnBatchPatch.removeAttribute("disabled");
+      logMessage("Batch export completed.");
     });
 
+    // ====== Batch patch (staged, NO auto-download) ======
     btnBatchPatch.addEventListener("click", async () => {
       clearLog();
       if (!folderInput.files || folderInput.files.length === 0) {
-        alert("Pick the edited folder.");
+        logMessage("Pick the edited folder.", "error");
         return;
       }
-      const fwBytes = new Uint8Array(app.firmware);
+      if (!stagedFw) {
+        logMessage("No firmware loaded yet.", "error");
+        return;
+      }
       const byName = new Map();
 
       for (const f of folderInput.files) {
@@ -805,7 +832,7 @@
       }
 
       let patchedCount = 0;
-      let missing = [];
+      const missing = [];
 
       for (const ent of app.map) {
         if (ent.type !== "image") continue;
@@ -817,28 +844,41 @@
         }
         if (!f) continue;
 
-        const info = headerInfo(app.firmware, ent.offset);
+        const info = headerInfo(activeBytes(), ent.offset);
         try {
           let raw;
           if (f.name.endsWith(".raw")) {
             raw = new Uint8Array(await f.arrayBuffer());
           } else {
-            const pal = firmwarePaletteAt(app.firmware, ent.offset, info.colors);
+            const pal = firmwarePaletteAt(activeBytes(), ent.offset, info.colors);
             raw = await pngToRawUsingPalette(f, info.w, info.h, info.colors, pal);
           }
-          patchRawIntoFirmware(fwBytes, ent.offset, raw, info);
+          patchRawIntoFirmware(stagedFw, ent.offset, raw, info);
           patchedCount++;
-          logMessage(`✔ Patched ${hex(ent.offset)}`, "success");
+          logMessage(`✔ Staged ${hex(ent.offset)}`, "success");
         } catch (e) {
           logMessage(`✖ ${hex(ent.offset)} error: ${e.message}`, "error");
           missing.push(`${hex(ent.offset)} (${e.message})`);
         }
       }
 
-      logMessage(`\nPatched ${patchedCount} images.`);
+      if (patchedCount > 0) setDirty();
+      logMessage(`Staged ${patchedCount} images.`);
       if (missing.length) logMessage(`Failed patches:\n${missing.join("\n")}`, "error");
+      // no auto-download here anymore
+    });
 
-      downloadPatchedFirmware("firmware.bin", fwBytes);
+    // ====== Download staged firmware ======
+    btnDownloadPatched?.addEventListener("click", () => {
+      if (!stagedFw || !dirty) {
+        logMessage("No staged patches to download yet.");
+        return;
+      }
+      const out = new Uint8Array(stagedFw);
+      const blob = blobFromBytes(out);
+      downloadBlob(`patched_${activeFileName}`, blob);
+      logMessage("⬇️ Downloaded patched firmware.");
+      // keep staged state intact so user can continue if needed
     });
   }
 
