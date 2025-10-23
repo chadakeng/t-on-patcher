@@ -468,10 +468,20 @@
       );
     });
 
+    // Export PNG
     exportPngBtn?.addEventListener("click", () => {
-      if (!previewItem) return;
-      entityPreviewCanvas.toBlob((blob) => {
-        if (blob) downloadBlob(`image_${previewItem.offset.toString(16)}.png`, blob);
+      if (!previewItem || previewItem.type !== TOImage.typeName) return;
+
+      const off = document.createElement("canvas");
+      const srcBytes = activeBytes().subarray(previewItem.offset, previewItem.offset + previewItem.size);
+      const img1x = new TOImage(previewItem.offset, srcBytes);
+
+      img1x.drawTo(off, 1);
+      off.toBlob((blob) => {
+        if (blob) downloadBlob(
+          `img_${previewItem.offset.toString(16)}_${img1x.width}x${img1x.height}.png`,
+          blob
+        );
       }, "image/png");
     });
 
